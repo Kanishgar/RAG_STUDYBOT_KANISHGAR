@@ -166,8 +166,9 @@ export default function ChatArea({ selectedSubject, selectedUnit }) {
 
       setMessages((prev) => [...prev, botMsg]);
     } catch (err) {
+      console.error("API error:", err);
       setError(
-        err?.response?.data?.detail || "Something went wrong. Is the backend running?"
+        err?.response?.data?.detail || err?.message || "Something went wrong. Is the backend running?"
       );
     } finally {
       setLoading(false);

@@ -16,14 +16,17 @@ app = FastAPI(title="Sem 7 RAG Chatbot API", version="2.0.0")
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:3000",
-    "https://kanishgar-studybot.vercel.app",   # production frontend
+    "http://127.0.0.1:3000",
+    "https://kanishgar-studybot.vercel.app",
     "https://kanishgar-sem7.vercel.app",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

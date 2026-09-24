@@ -210,6 +210,30 @@ def retrieve_relevant_chunks(
         with_payload=True,
     )
 
+    # Fallback 1: If marks filter was applied but yielded 0 results, retry without marks filter
+    if not results and marks_filter:
+        fallback_conditions = [
+            FieldCondition(key="subject", match=MatchValue(value=subject.lower())),
+            FieldCondition(key="unit",    match=MatchValue(value=unit)),
+        ]
+        results = client.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=query_vector,
+            query_filter=Filter(must=fallback_conditions),
+            limit=top_k,
+            with_payload=True,
+        )
+
+    # Fallback 2: If unit yielded 0 results, search the whole subject
+    if not results:
+        results = client.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=query_vector,
+            query_filter=Filter(must=[FieldCondition(key="subject", match=MatchValue(value=subject.lower()))]),
+            limit=top_k,
+            with_payload=True,
+        )
+
     chunks = []
     for hit in results:
         payload = hit.payload or {}

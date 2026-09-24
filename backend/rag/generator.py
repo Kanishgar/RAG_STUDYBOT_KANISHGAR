@@ -117,26 +117,59 @@ def generate_answer(
     if not context_chunks:
         return f"No past exam questions found in the uploaded question papers for Unit {unit}."
 
+def format_questions_directly(chunks: List[Dict]) -> str:
+    """Format exact questions directly from database chunks with zero latency."""
+    out = []
+    seen = set()
+    for c in chunks:
+        text = c.get("text", "").strip().lstrip(".-) \t\n")
+        # Deduplicate
+        if text[:50] in seen or len(text) < 15:
+            continue
+        seen.add(text[:50])
+
+        part = c.get("part", "generic").replace("_", ".").upper()
+        marks = c.get("marks", 0)
+        mark_tag = f"{marks} Marks — Part {part}" if marks else f"Part {part}"
+        out.append(f"• **[{mark_tag}]**:\n  {text}")
+
+    if not out:
+        return "No specific questions found for this topic in the uploaded question papers."
+
+    return "### 📄 Past Exam Questions:\n\n" + "\n\n".join(out[:5])
+
+
+def generate_answer(
+    query: str,
+    subject: str,
+    unit: int,
+    context_chunks: List[Dict],
+    detected_marks: Optional[int] = None,
+) -> str:
+    """
+    Retrieve and present exact exam questions matching the query.
+    """
+    if not context_chunks:
+        return f"No past exam questions found in the uploaded question papers for Unit {unit}."
+
+    # If the student is asking for a list of questions, return them directly
+    q_lower = query.lower()
+    if any(k in q_lower for k in ["question", "qn", "top", "list", "important", "all"]):
+        return format_questions_directly(context_chunks)
+
     client = get_client()
-
-    # Auto-detect marks from query if not explicitly provided
-    if not detected_marks:
-        detected_marks = detect_marks_from_query(query)
-
     prompt = build_prompt(query, subject, unit, context_chunks, detected_marks)
 
-    last_error = None
     for model_name in FALLBACK_MODELS:
         try:
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
             )
-            if response.text:
+            if response.text and len(response.text.strip()) > 10:
                 return response.text
         except Exception as e:
-            print(f"⚠️ Model {model_name} failed: {e}. Trying fallback...")
-            last_error = e
             continue
 
-    return f"Service temporarily busy across all models. Details: {last_error}"
+    # If LLMs are rate-limited or busy, gracefully return the direct exact questions!
+    return format_questions_directly(context_chunks)
