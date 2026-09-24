@@ -15,7 +15,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LLM_MODEL = "gemini-3.5-flash-lite"
+FALLBACK_MODELS = [
+    "gemma-4-26b-a4b-it",
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+]
 
 SUBJECT_FULLNAMES = {
     "rf":    "RF Passive and Active Circuits",
@@ -138,9 +143,18 @@ def generate_answer(
 
     prompt = build_prompt(query, subject, unit, context_chunks, detected_marks)
 
-    response = client.models.generate_content(
-        model=LLM_MODEL,
-        contents=prompt,
-    )
+    last_error = None
+    for model_name in FALLBACK_MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            if response.text:
+                return response.text
+        except Exception as e:
+            print(f"⚠️ Model {model_name} failed: {e}. Trying fallback...")
+            last_error = e
+            continue
 
-    return response.text or "Could not generate an answer. Please try again."
+    return f"Service temporarily busy across all models. Details: {last_error}"
