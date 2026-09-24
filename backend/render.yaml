@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: kanishgar-sem7-api
+    runtime: python
+    region: singapore   # closest to Coimbatore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false      # set manually in Render dashboard
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
