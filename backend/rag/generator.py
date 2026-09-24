@@ -58,46 +58,35 @@ def build_prompt(
     # Build context from retrieved chunks
     context_parts = []
     for i, chunk in enumerate(context_chunks, 1):
-        mark_label = f"[{chunk['marks']} marks - Part {chunk['part'].replace('_', '.')}]" if chunk["marks"] else ""
-        eo_label   = " [Either/Or question]" if chunk["is_either_or"] else ""
+        part_name = chunk.get("part", "").replace("_", ".").upper()
+        marks_num = chunk.get("marks", "")
+        mark_label = f"[{marks_num} Marks — Part {part_name}]" if marks_num else f"[Part {part_name}]"
         context_parts.append(
-            f"Q{i} {mark_label}{eo_label}:\n{chunk['text']}"
+            f"Question {i} {mark_label}:\n{chunk['text'].strip()}"
         )
 
-    context_text = "\n\n---\n\n".join(context_parts) if context_parts else "No specific past questions found for this topic."
+    context_text = "\n\n---\n\n".join(context_parts) if context_parts else "No questions found."
 
-    # Figure out mark guidance
-    mark_guidance = MARK_GUIDANCE.get(detected_marks, MARK_GUIDANCE[0])
-
-    marks_section = ""
-    if detected_marks:
-        marks_section = f"\nAnswer Format: This appears to be a **{detected_marks}-mark** question. {mark_guidance}"
-
-    prompt = f"""You are an expert academic assistant for Semester 7 engineering students studying under Anna University.
-
+    prompt = f"""You are an exam question retrieval assistant for PSG College of Technology (Anna University Semester 7).
 Subject: {subject_name}
 Unit: Unit {unit}
-{marks_section}
 
-Past questions and context from this unit's question papers:
-
---- PAST QUESTION PAPER CONTEXT ---
+--- RETRIEVED QUESTIONS FROM EXAM PAPERS ---
 {context_text}
---- END CONTEXT ---
+--- END QUESTIONS ---
 
-Student's Question:
-{query}
+Student Query:
+"{query}"
 
-Instructions:
-- Answer based primarily on the context above (past question patterns).
-- Tailor the depth of your answer to the mark weightage indicated.
-- Use bullet points, numbered steps, or headings as needed for clarity.
-- For 10-mark answers: structure with Introduction → Main Content → Conclusion.
-- For 6-mark answers: explain with brief examples.
-- For 3-mark answers: be crisp and direct.
-- Do NOT hallucinate. If unsure, say "This may need further reference."
+STRICT RULES:
+1. Output ONLY the exact question(s) from the exam papers above that match the student's request.
+2. DO NOT provide answers, explanations, solutions, or commentary. Output the exact question text alone.
+3. Format each matching question as:
+   • **[Part ... — X Marks]**: <exact question text>
+4. If multiple matching questions are found, list each one.
+5. If no questions match the student query, output: "No matching past exam questions found for this topic."
 
-Answer:"""
+Exact Exam Question(s):"""
     return prompt
 
 
@@ -123,23 +112,16 @@ def generate_answer(
     detected_marks: Optional[int] = None,
 ) -> str:
     """
-    Generate a mark-aware RAG answer using Gemini.
+    Retrieve and present exact exam questions matching the query.
     """
+    if not context_chunks:
+        return f"No past exam questions found in the uploaded question papers for Unit {unit}."
+
     client = get_client()
 
     # Auto-detect marks from query if not explicitly provided
     if not detected_marks:
         detected_marks = detect_marks_from_query(query)
-
-    # Also try to infer from retrieved chunks (most common marks in top results)
-    if not detected_marks and context_chunks:
-        mark_counts = {}
-        for c in context_chunks:
-            m = c.get("marks", 0)
-            if m:
-                mark_counts[m] = mark_counts.get(m, 0) + 1
-        if mark_counts:
-            detected_marks = max(mark_counts, key=mark_counts.get)
 
     prompt = build_prompt(query, subject, unit, context_chunks, detected_marks)
 
