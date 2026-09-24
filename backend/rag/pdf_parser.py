@@ -36,11 +36,14 @@ class Question:
 
 
 PART_MARKS = {
-    "a":    3,
-    "b_i":  6,
-    "b_ii": 6,
-    "c_i":  10,
-    "c_ii": 10,
+    "a_i":  3,   # 1st three-mark question
+    "a_ii": 3,   # 2nd three-mark question
+    "a":    3,   # generic part a fallback
+    "b":    6,   # the single six-mark question
+    "b_i":  6,   # legacy fallback
+    "b_ii": 6,   # legacy fallback
+    "c_i":  10,  # 10 marks (either)
+    "c_ii": 10,  # 10 marks (or)
 }
 
 EITHER_OR_PARTS = {"c_i", "c_ii"}
@@ -68,7 +71,6 @@ def is_watermark_line(line: str) -> bool:
         if pat.search(stripped):
             return True
     # Very short lines that are just letter clusters (watermark noise)
-    # e.g. "G T E C H", "S G T", etc.
     if re.match(r"^[A-Z\s]{1,12}$", stripped) and len(stripped.replace(" ", "")) <= 8:
         return True
     return False
@@ -76,26 +78,27 @@ def is_watermark_line(line: str) -> bool:
 
 # ── PSG Tech question paper regex patterns ────────────────────────────────────
 
-# Matches: "1.a" / "1) a" / "1. a"  (unit number + part a — marks start of new unit)
+# Matches start of new unit: "1. a" / "1) a" / "1. a) i)" / "1. a (i)"
 RE_UNIT_A = re.compile(
-    r"^\s*(\d)\s*[.)]\s*[aA]\b\.?\s*(.*)?$"
+    r"^\s*(\d)\s*[.)]\s*[aA]\b(?:\s*[.)]\s*[.(]?\s*[iI]\b)?\.?\s*(.*)?$"
 )
 
-# Matches continuation parts (NO unit number prefix):
-# "b.(i)" / "b) (i)" / "(b)(i)" / "b (i)"
-RE_B_II = re.compile(
-    r"^\s*[bB]\s*[.)]\s*[.(]?\s*[iI]{2}\b\.?\s*(.*)?$"
-)
-RE_B_I = re.compile(
-    r"^\s*[bB]\s*[.)]\s*[.(]?\s*[iI]\b(?!\s*[iI])\.?\s*(.*)?$"
+# Second 3-mark question in the unit: "a) ii)" / "a. (ii)" / "ii)"
+RE_A_II = re.compile(
+    r"^\s*(?:[aA]\s*[.)]\s*)?[.(]?\s*[iI]{2}\b\.?\s*(.*)?$"
 )
 
-# "c.(i)" / "c) i" / "c. (ii)"
-RE_C_II = re.compile(
-    r"^\s*(?:(?:or|either|OR|Either)\s+)?[cC]\s*[.)]\s*[.(]?\s*[iI]{2}\b\.?\s*(.*)?$"
+# Single 6-mark question in the unit: "b" / "b)" / "b."
+RE_B = re.compile(
+    r"^\s*[bB]\s*[.)]\s*(.*)?$"
 )
+
+# 10-mark Either/Or questions:
 RE_C_I = re.compile(
     r"^\s*(?:(?:or|either|OR|Either)\s+)?[cC]\s*[.)]\s*[.(]?\s*[iI]\b(?!\s*[iI])\.?\s*(.*)?$"
+)
+RE_C_II = re.compile(
+    r"^\s*(?:(?:or|either|OR|Either)\s+)?[cC]?\s*[.)]?\s*[.(]?\s*(?:[iI]{2}|[oO][rR])\b\.?\s*(.*)?$"
 )
 
 # Standalone either/or separator lines
@@ -110,13 +113,24 @@ RE_NOISE = re.compile(
 
 # ── Extraction ────────────────────────────────────────────────────────────────
 
+def not_watermark_char(char):
+    """Filter out 45-degree rotated diagonal PSG Tech watermark characters."""
+    m = char.get("matrix", (1, 0, 0, 1))
+    if len(m) >= 4 and (abs(m[1]) > 0.01 or abs(m[2]) > 0.01):
+        return False
+    if char.get("size", 0) > 18:
+        return False
+    return True
+
+
 def extract_text_from_pdf(file_path: str) -> str:
-    """Extract text from PDF with PSG Tech watermark filtering."""
+    """Extract text from PDF with true character-level watermark removal."""
     lines_out = []
 
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
-            page_text = page.extract_text()
+            filtered_page = page.filter(not_watermark_char)
+            page_text = filtered_page.extract_text()
             if not page_text:
                 continue
             for line in page_text.split("\n"):
@@ -133,15 +147,15 @@ def extract_text_from_pdf(file_path: str) -> str:
 
 def _try_match_continuation(line: str):
     """
-    Try to match a continuation sub-part line (b/c parts — no unit prefix).
+    Try to match a continuation sub-part line (a_ii, b, c_i, c_ii).
     Returns (part_key, captured_text) or None.
     Order matters: check ii before i.
     """
     for pattern, part_key in [
         (RE_C_II, "c_ii"),
-        (RE_B_II, "b_ii"),
         (RE_C_I,  "c_i"),
-        (RE_B_I,  "b_i"),
+        (RE_B,    "b"),
+        (RE_A_II, "a_ii"),
     ]:
         m = pattern.match(line)
         if m:
@@ -155,9 +169,10 @@ def parse_questions_from_text(text: str) -> List[Question]:
     Parse PSG Tech question paper text into Question objects.
 
     State machine:
-      - When we see "N.a" → new unit N begins, start collecting part 'a'
-      - When we see "b.(i)", "b.(ii)", "c.(i)", "c.(ii)" → continuation of same unit
-      - Accumulate text lines until the next known header
+      - When we see "N.a" / "N.a(i)" → new unit N begins, start collecting part 'a_i' (3 marks)
+      - When we see "a.(ii)" → collecting part 'a_ii' (3 marks)
+      - When we see "b" → collecting part 'b' (6 marks)
+      - When we see "c.(i)", "c.(ii)" → collecting parts 'c_i', 'c_ii' (10 marks either/or)
     """
     lines = text.split("\n")
     questions: List[Question] = []
@@ -193,7 +208,7 @@ def parse_questions_from_text(text: str) -> List[Question]:
         if m_unit_a:
             flush()
             current_unit = int(m_unit_a.group(1))
-            current_part = "a"
+            current_part = "a_i"
             first_text   = m_unit_a.group(2).strip() if m_unit_a.group(2) else ""
             current_lines = [first_text] if first_text else []
             continue

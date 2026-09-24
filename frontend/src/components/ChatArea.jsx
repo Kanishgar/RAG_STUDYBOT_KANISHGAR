@@ -14,9 +14,11 @@ const MARKS_OPTIONS = [
 ];
 
 const PART_LABELS = {
-  a:      { label: "Part A", marks: 3,  color: "#10B981" },
-  b_i:    { label: "Part B(i)", marks: 6,  color: "#F59E0B" },
-  b_ii:   { label: "Part B(ii)", marks: 6,  color: "#F59E0B" },
+  a_i:    { label: "Part A(i)", marks: 3,  color: "#10B981" },
+  a_ii:   { label: "Part A(ii)", marks: 3, color: "#10B981" },
+  a:      { label: "Part A", marks: 3,     color: "#10B981" },
+  b:      { label: "Part B", marks: 6,     color: "#F59E0B" },
+  b_i:    { label: "Part B", marks: 6,     color: "#F59E0B" },
   c_i:    { label: "Part C(i) — Either", marks: 10, color: "#8B5CF6" },
   c_ii:   { label: "Part C(ii) — Or",   marks: 10, color: "#8B5CF6" },
   generic:{ label: "General", marks: 0, color: "#6B7280" },
