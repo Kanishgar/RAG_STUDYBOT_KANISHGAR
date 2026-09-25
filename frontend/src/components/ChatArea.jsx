@@ -65,6 +65,9 @@ function WelcomeScreen({ subject, unit, onOpenSidebar }) {
         <button className="mobile-cta-btn" onClick={onOpenSidebar}>
           📚 Choose Subject & Unit
         </button>
+        <div className="welcome-author-tag">
+          <span className="sparkle-anim">✨</span> Developed by <strong className="dev-author-name">Kanishgar</strong>
+        </div>
       </div>
     );
   }

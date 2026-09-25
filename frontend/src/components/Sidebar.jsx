@@ -81,15 +81,16 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* Footer info */}
+      {/* Footer info & Developer Watermark */}
       <div className="sidebar-section sidebar-footer">
-        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8 }}>
-          <BookOpen size={12} style={{ display: "inline", marginRight: 4 }} />
-          <strong>Sem 7 Study Assistant</strong>
-          <br />
-          PSG College of Technology
-          <br />
-          <span style={{ opacity: 0.7 }}>2M, 6M & 10M Past Exam Qns</span>
+        <div className="dev-credit-box">
+          <div className="dev-credit-author">
+            <span className="dev-sparkle">🚀</span>
+            <span>Developed by <strong className="dev-author-name">Kanishgar</strong></span>
+          </div>
+          <div className="dev-credit-sub">
+            PSG College of Technology · Sem 7
+          </div>
         </div>
       </div>
     </aside>

@@ -31,9 +31,11 @@ export default function App() {
         </div>
 
         <div className="topbar-actions">
-          <span className="topbar-tagline">
-            PSG Tech · 5 Subjects
-          </span>
+          <div className="dev-watermark-pill">
+            <span className="dev-pulse-dot"></span>
+            <span className="dev-pill-label">Developed by</span>
+            <span className="dev-pill-name">Kanishgar</span>
+          </div>
         </div>
       </header>
 
@@ -61,6 +63,14 @@ export default function App() {
           selectedUnit={selectedUnit}
           onOpenSidebar={() => setMobileMenuOpen(true)}
         />
+      </div>
+
+      {/* ── Floating Watermark Badge ────────────────── */}
+      <div className="floating-dev-badge" title="Developed by Kanishgar">
+        <span className="dev-badge-pulse"></span>
+        <span className="dev-badge-text">
+          ⚡ Developed by <span className="dev-badge-name">Kanishgar</span>
+        </span>
       </div>
     </div>
   );

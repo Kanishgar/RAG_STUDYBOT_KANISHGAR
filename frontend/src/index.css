@@ -1166,3 +1166,174 @@ body {
     font-size: 13px;
   }
 }
+
+/* ─── Kanishgar Developer Watermark & Neon Glow Badges ─────────────── */
+.dev-watermark-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 13px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(236, 72, 153, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
+  font-size: 12px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.dev-watermark-pill:hover {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.22);
+  transform: translateY(-1px);
+}
+
+.dev-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulseDot 2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulseDot {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.dev-pill-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11.5px;
+}
+
+.dev-pill-name {
+  font-weight: 800;
+  background: linear-gradient(135deg, #4F46E5, #9333EA, #EC4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.02em;
+}
+
+/* Floating Watermark */
+.floating-dev-badge {
+  position: fixed;
+  bottom: 14px;
+  right: 18px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: 30px;
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.16);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+  pointer-events: auto;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: default;
+  user-select: none;
+}
+
+.floating-dev-badge:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: #6366F1;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.28);
+}
+
+.dev-badge-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6366F1;
+  box-shadow: 0 0 8px #6366F1;
+  animation: neonGlow 1.8s infinite alternate;
+  flex-shrink: 0;
+}
+
+@keyframes neonGlow {
+  from {
+    opacity: 0.6;
+    box-shadow: 0 0 4px #6366F1;
+  }
+  to {
+    opacity: 1;
+    box-shadow: 0 0 12px #EC4899;
+  }
+}
+
+.dev-badge-name {
+  font-weight: 800;
+  background: linear-gradient(135deg, #4F46E5, #9333EA, #EC4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Sidebar Dev Box */
+.dev-credit-box {
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.05), rgba(236, 72, 153, 0.05));
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+}
+
+.dev-credit-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.dev-author-name {
+  font-weight: 800;
+  background: linear-gradient(135deg, #4F46E5, #9333EA, #EC4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dev-credit-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  margin-left: 22px;
+}
+
+.welcome-author-tag {
+  margin-top: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 768px) {
+  .floating-dev-badge {
+    bottom: 10px;
+    right: 10px;
+    padding: 4px 10px;
+    font-size: 10.5px;
+  }
+}

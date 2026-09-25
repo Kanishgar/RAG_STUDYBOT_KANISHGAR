@@ -12,7 +12,7 @@ from typing import Optional
 from rag.embedder import retrieve_relevant_chunks, get_all_questions_by_marks
 from rag.generator import generate_answer, detect_marks_from_query
 
-app = FastAPI(title="Sem 7 RAG Chatbot API", version="2.0.0")
+app = FastAPI(title="Sem 7 StudyBot API - Developed by Kanishgar", version="2.0.0")
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
@@ -54,7 +54,7 @@ class ChatResponse(BaseModel):
 
 @app.get("/")
 def root():
-    return {"message": "Sem 7 RAG Chatbot API v2 — Anna University format 🚀"}
+    return {"message": "Sem 7 PSG Tech Exam Portal API — Developed by Kanishgar 🚀"}
 
 
 @app.get("/subjects")
