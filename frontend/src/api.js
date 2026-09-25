@@ -19,3 +19,12 @@ export async function sendQuestion({ question, subject, unit, marks = null }) {
   const res = await api.post("/chat", payload);
   return res.data;
 }
+
+/**
+ * Button-driven: fetch ALL questions for subject + unit + marks.
+ * No user text needed — direct Qdrant lookup.
+ */
+export async function fetchQuestions({ subject, unit, marks }) {
+  const res = await api.post("/questions", { subject, unit, marks });
+  return res.data;
+}

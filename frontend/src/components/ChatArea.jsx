@@ -1,114 +1,160 @@
-// ChatArea.jsx - Main chat window with marks selector
+// ChatArea.jsx — Button-driven question viewer
+// Flow: Subject (sidebar) → Unit (sidebar) → click mark button → see all questions
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Database, Zap } from "lucide-react";
-import { sendQuestion } from "../api";
+import { Bot, Database, ChevronRight, RotateCcw, Copy, Check } from "lucide-react";
+import { fetchQuestions } from "../api";
 import { getSubject } from "../subjects";
 
-// ── Mark pill labels ──────────────────────────────────────────────────────────
-const MARKS_OPTIONS = [
-  { value: null, label: "Auto",   emoji: "🤖", title: "Let AI decide answer depth" },
-  { value: 3,    label: "3 Marks", emoji: "⚡", title: "Short answer (Part A)" },
-  { value: 6,    label: "6 Marks", emoji: "📝", title: "Medium answer (Part B)" },
-  { value: 10,   label: "10 Marks",emoji: "📖", title: "Long answer (Part C)" },
+// ── Mark buttons config ───────────────────────────────────────────────────────
+const MARK_BUTTONS = [
+  {
+    marks: 2,
+    label: "2 Mark Questions",
+    sublabel: "Part A — Short answers",
+    emoji: "⚡",
+    color: "#10B981",
+    bg: "#D1FAE5",
+    border: "#6EE7B7",
+  },
+  {
+    marks: 6,
+    label: "6 Mark Questions",
+    sublabel: "Part B — Medium answers",
+    emoji: "📝",
+    color: "#F59E0B",
+    bg: "#FEF3C7",
+    border: "#FCD34D",
+  },
+  {
+    marks: 10,
+    label: "10 Mark Questions",
+    sublabel: "Part C — Long answers",
+    emoji: "📖",
+    color: "#8B5CF6",
+    bg: "#EDE9FE",
+    border: "#C4B5FD",
+  },
 ];
 
-const PART_LABELS = {
-  a_i:    { label: "Part A(i)", marks: 3,  color: "#10B981" },
-  a_ii:   { label: "Part A(ii)", marks: 3, color: "#10B981" },
-  a:      { label: "Part A", marks: 3,     color: "#10B981" },
-  b:      { label: "Part B", marks: 6,     color: "#F59E0B" },
-  b_i:    { label: "Part B", marks: 6,     color: "#F59E0B" },
-  c_i:    { label: "Part C(i) — Either", marks: 10, color: "#8B5CF6" },
-  c_ii:   { label: "Part C(ii) — Or",   marks: 10, color: "#8B5CF6" },
-  generic:{ label: "General", marks: 0, color: "#6B7280" },
+const PART_LABEL = {
+  a_i:    "Part A(i)",
+  a_ii:   "Part A(ii)",
+  a:      "Part A",
+  b:      "Part B",
+  b_i:    "Part B",
+  c_i:    "Part C — Either",
+  c_ii:   "Part C — Or",
+  generic:"General",
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TypingIndicator() {
+function WelcomeScreen({ subject, unit, onOpenSidebar }) {
+  if (!subject) {
+    return (
+      <div className="welcome-screen">
+        <div className="welcome-icon">🎓</div>
+        <h2>Sem 7 Study Assistant</h2>
+        <p>Browse past exam questions for PSG College of Technology.</p>
+        <div className="steps">
+          <div className="step"><div className="step-num">1</div>Select a subject</div>
+          <div className="step"><div className="step-num">2</div>Pick a unit (1–5)</div>
+          <div className="step"><div className="step-num">3</div>Click 2M, 6M, or 10M button!</div>
+        </div>
+        <button className="mobile-cta-btn" onClick={onOpenSidebar}>
+          📚 Choose Subject & Unit
+        </button>
+      </div>
+    );
+  }
+  if (!unit) {
+    return (
+      <div className="welcome-screen">
+        <div className="welcome-icon">{subject.icon}</div>
+        <h2>{subject.shortName}</h2>
+        <p>Now select a unit from 1 to 5 to view past exam questions.</p>
+        <button className="mobile-cta-btn" onClick={onOpenSidebar}>
+          📖 Choose Unit (1–5)
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
+function QuestionCard({ q, index, markColor }) {
+  const [copied, setCopied] = useState(false);
+  const partLabel = PART_LABEL[q.part] || q.part;
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(q.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="message bot">
-      <div className="msg-avatar"><Bot size={16} /></div>
-      <div className="msg-bubble">
-        <div className="typing-indicator">
-          <span /><span /><span />
+    <div className="question-card" style={{ borderLeftColor: markColor }}>
+      <div className="question-num" style={{ color: markColor }}>Q{index + 1}</div>
+      <div className="question-body">
+        <div className="question-text">{q.text}</div>
+        <div className="question-meta">
+          <span className="q-badge" style={{ background: `${markColor}20`, color: markColor }}>
+            {partLabel}
+          </span>
+          {q.is_either_or && (
+            <span className="q-badge" style={{ background: "#F3F4F6", color: "#6B7280" }}>
+              Either / Or
+            </span>
+          )}
+          <button
+            className="copy-card-btn"
+            onClick={handleCopy}
+            title="Copy question text"
+            aria-label="Copy question text"
+          >
+            {copied ? <Check size={12} color="#059669" /> : <Copy size={12} />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function WelcomeScreen() {
-  return (
-    <div className="welcome-screen">
-      <div className="welcome-icon">🎓</div>
-      <h2>Sem 7 Study Assistant</h2>
-      <p>Trained on Anna University question papers. Pick your subject, unit, and mark type — then ask!</p>
-      <div className="steps">
-        <div className="step"><div className="step-num">1</div>Select subject</div>
-        <div className="step"><div className="step-num">2</div>Pick unit</div>
-        <div className="step"><div className="step-num">3</div>Choose mark type</div>
-        <div className="step"><div className="step-num">4</div>Ask your question!</div>
-      </div>
-    </div>
-  );
-}
+function ResultsPanel({ result, onBack }) {
+  const btnCfg = MARK_BUTTONS.find((b) => b.marks === result.marks);
+  const markColor = btnCfg?.color || "#6B7280";
 
-function MarksBadge({ marks, part }) {
-  if (!marks && !part) return null;
-  const info = PART_LABELS[part] || {};
   return (
-    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
-      {marks > 0 && (
-        <span className="chunks-badge" style={{ background: `${info.color}22`, color: info.color }}>
-          <Zap size={10} /> {marks} marks
-        </span>
-      )}
-      {part && part !== "generic" && (
-        <span className="chunks-badge" style={{ background: `${info.color}15`, color: info.color }}>
-          {info.label}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function MessageBubble({ msg }) {
-  const isUser = msg.role === "user";
-  return (
-    <div className={`message ${isUser ? "user" : "bot"}`}>
-      <div className="msg-avatar">
-        {isUser ? <User size={16} /> : <Bot size={16} />}
-      </div>
-      <div>
-        <div className="msg-bubble">
-          {/* User mark badge */}
-          {isUser && msg.marks && (
-            <div style={{
-              fontSize: 11, fontWeight: 700, opacity: 0.8,
-              marginBottom: 4, color: "rgba(255,255,255,0.85)"
-            }}>
-              {msg.marks}-mark question
-            </div>
-          )}
-          <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>
-
-          {/* Bot metadata badges */}
-          {!isUser && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-              {msg.detectedMarks && (
-                <MarksBadge marks={msg.detectedMarks} part={msg.topParts?.[0]} />
-              )}
-              {msg.chunksUsed > 0 && (
-                <span className="chunks-badge">
-                  <Database size={10} /> {msg.chunksUsed} past questions used
-                </span>
-              )}
-            </div>
-          )}
+    <div className="results-panel">
+      {/* Results header */}
+      <div className="results-header" style={{ borderBottomColor: `${markColor}33` }}>
+        <div>
+          <div className="results-title" style={{ color: markColor }}>
+            {btnCfg?.emoji} {btnCfg?.label}
+          </div>
+          <div className="results-sub">
+            Unit {result.unit} · {result.count} question{result.count !== 1 ? "s" : ""} found
+          </div>
         </div>
-        <div className="msg-meta">{msg.time}</div>
+        <button className="back-btn" onClick={onBack} title="Back to mark selection">
+          <RotateCcw size={14} /> Back
+        </button>
+      </div>
+
+      {/* Questions list */}
+      <div className="questions-list">
+        {result.questions.length === 0 ? (
+          <div className="empty-result">
+            <Database size={32} style={{ opacity: 0.3, marginBottom: 12 }} />
+            <p>No questions found for this unit.</p>
+          </div>
+        ) : (
+          result.questions.map((q, i) => (
+            <QuestionCard key={i} q={q} index={i} markColor={markColor} />
+          ))
+        )}
       </div>
     </div>
   );
@@ -116,71 +162,49 @@ function MessageBubble({ msg }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function ChatArea({ selectedSubject, selectedUnit }) {
-  const [messages, setMessages]   = useState([]);
-  const [input, setInput]         = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState(null);
-  const [selectedMarks, setMarks] = useState(null); // null = auto
-  const bottomRef = useRef(null);
+export default function ChatArea({ selectedSubject, selectedUnit, onOpenSidebar }) {
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+  const [result, setResult]     = useState(null); // null = show buttons
+  const [activeMarks, setActiveMarks] = useState(null);
+  const topRef = useRef(null);
 
-  const subject  = getSubject(selectedSubject);
-  const canChat  = !!selectedSubject && !!selectedUnit;
+  const subject = getSubject(selectedSubject);
+  const canFetch = !!selectedSubject && !!selectedUnit;
 
+  // Reset results when subject or unit changes
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    setResult(null);
+    setError(null);
+    setActiveMarks(null);
+  }, [selectedSubject, selectedUnit]);
 
-  const handleSend = async () => {
-    const q = input.trim();
-    if (!q || loading || !canChat) return;
+  // Scroll to top when new results arrive
+  useEffect(() => {
+    if (result) topRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [result]);
 
-    const userMsg = {
-      id:    Date.now(),
-      role:  "user",
-      content: q,
-      marks: selectedMarks,
-      time:  new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
+  const handleMarkClick = async (marks) => {
+    if (!canFetch || loading) return;
 
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
     setLoading(true);
     setError(null);
+    setActiveMarks(marks);
+    setResult(null);
 
     try {
-      const res = await sendQuestion({
-        question: q,
-        subject:  selectedSubject,
-        unit:     selectedUnit,
-        marks:    selectedMarks,
+      const data = await fetchQuestions({
+        subject: selectedSubject,
+        unit: selectedUnit,
+        marks,
       });
-
-      const botMsg = {
-        id:            Date.now() + 1,
-        role:          "bot",
-        content:       res.answer,
-        chunksUsed:    res.chunks_used,
-        detectedMarks: res.detected_marks,
-        topParts:      res.top_parts,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      setMessages((prev) => [...prev, botMsg]);
+      setResult(data);
     } catch (err) {
-      console.error("API error:", err);
       setError(
-        err?.response?.data?.detail || err?.message || "Something went wrong. Is the backend running?"
+        err?.response?.data?.detail || err?.message || "Backend not reachable. Is it running?"
       );
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
     }
   };
 
@@ -188,83 +212,141 @@ export default function ChatArea({ selectedSubject, selectedUnit }) {
     <div className="chat-area">
       {/* Context bar */}
       <div className="context-bar">
-        {subject ? (
-          <span className="context-tag subject">{subject.icon} {subject.shortName}</span>
-        ) : (
-          <span className="context-tag empty">No subject</span>
-        )}
-        {selectedUnit ? (
-          <span className="context-tag unit">📖 Unit {selectedUnit}</span>
-        ) : (
-          <span className="context-tag empty">No unit</span>
-        )}
+        <div
+          className="context-tags"
+          onClick={onOpenSidebar}
+          role="button"
+          tabIndex={0}
+          title="Tap to change subject or unit"
+        >
+          {subject ? (
+            <span className="context-tag subject">{subject.icon} {subject.shortName}</span>
+          ) : (
+            <span className="context-tag empty">Select subject</span>
+          )}
+          {selectedUnit ? (
+            <>
+              <ChevronRight size={14} style={{ opacity: 0.4 }} />
+              <span className="context-tag unit">📖 Unit {selectedUnit}</span>
+            </>
+          ) : (
+            <span className="context-tag empty">Select unit</span>
+          )}
+        </div>
+        <button
+          className="context-change-btn"
+          onClick={onOpenSidebar}
+          title="Change subject or unit"
+        >
+          Change
+        </button>
       </div>
 
-      {/* Messages */}
-      <div className="messages-container">
-        {messages.length === 0 && !loading ? (
-          <WelcomeScreen />
-        ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+      {/* Main content */}
+      <div className="messages-container" ref={topRef}>
+
+        {/* Show welcome if not ready */}
+        {!canFetch && (
+          <WelcomeScreen
+            subject={subject}
+            unit={selectedUnit}
+            onOpenSidebar={onOpenSidebar}
+          />
         )}
-        {loading && <TypingIndicator />}
-        {error && (
+
+        {/* Show mark buttons when ready and no result yet */}
+        {canFetch && !result && !loading && (
+          <div className="mark-buttons-panel">
+            <div className="mark-panel-title">
+              <Bot size={18} style={{ marginRight: 8, opacity: 0.7 }} />
+              Choose question type for <strong>{subject?.shortName} — Unit {selectedUnit}</strong>
+            </div>
+
+            <div className="mark-buttons-grid">
+              {MARK_BUTTONS.map((btn) => (
+                <button
+                  key={btn.marks}
+                  className="mark-big-btn"
+                  style={{
+                    background: btn.bg,
+                    borderColor: btn.border,
+                    color: btn.color,
+                  }}
+                  onClick={() => handleMarkClick(btn.marks)}
+                  disabled={loading}
+                >
+                  <span className="mbtn-emoji">{btn.emoji}</span>
+                  <span className="mbtn-label">{btn.label}</span>
+                  <span className="mbtn-sub">{btn.sublabel}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mark-hint">
+              <Database size={12} /> All questions fetched directly from past papers
+            </div>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {loading && (
+          <div className="mark-buttons-panel">
+            <div className="mark-panel-title">Fetching questions…</div>
+            <div className="mark-buttons-grid">
+              {MARK_BUTTONS.map((btn) => {
+                const active = btn.marks === activeMarks;
+                return (
+                  <button
+                    key={btn.marks}
+                    className="mark-big-btn"
+                    style={{
+                      background: active ? btn.bg : "#F9FAFB",
+                      borderColor: active ? btn.border : "#E5E7EB",
+                      color: active ? btn.color : "#9CA3AF",
+                      opacity: active ? 1 : 0.5,
+                    }}
+                    disabled
+                  >
+                    <span className="mbtn-emoji">{active ? "⏳" : btn.emoji}</span>
+                    <span className="mbtn-label">{btn.label}</span>
+                    <span className="mbtn-sub">{active ? "Loading…" : btn.sublabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && !loading && (
           <div style={{
             background: "#FEE2E2", color: "#DC2626",
-            padding: "10px 14px", borderRadius: 10,
-            fontSize: 13, alignSelf: "center"
+            padding: "14px 18px", borderRadius: 12,
+            fontSize: 13, margin: "20px auto", maxWidth: 480,
+            textAlign: "center",
           }}>
             ⚠️ {error}
+            <br />
+            <button
+              style={{
+                marginTop: 10, fontSize: 12, color: "#DC2626",
+                background: "transparent", border: "1px solid #DC2626",
+                borderRadius: 8, padding: "4px 12px", cursor: "pointer",
+              }}
+              onClick={() => { setError(null); setActiveMarks(null); }}
+            >
+              Try again
+            </button>
           </div>
         )}
-        <div ref={bottomRef} />
-      </div>
 
-      {/* Marks selector + Input bar */}
-      <div className="input-bar">
-        {/* Mark type selector */}
-        <div className="marks-selector">
-          <span className="marks-label">Answer depth:</span>
-          <div className="marks-pills">
-            {MARKS_OPTIONS.map((opt) => (
-              <button
-                key={opt.value ?? "auto"}
-                className={`marks-pill ${selectedMarks === opt.value ? "active" : ""}`}
-                onClick={() => setMarks(opt.value)}
-                title={opt.title}
-              >
-                {opt.emoji} {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="input-row">
-          <textarea
-            className="chat-input"
-            placeholder={
-              canChat
-                ? `Ask a ${selectedMarks ? `${selectedMarks}-mark ` : ""}question about ${subject?.shortName} — Unit ${selectedUnit}...`
-                : "Select a subject and unit first..."
-            }
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={!canChat || loading}
-            rows={1}
+        {/* Results */}
+        {result && !loading && (
+          <ResultsPanel
+            result={result}
+            onBack={() => { setResult(null); setActiveMarks(null); }}
           />
-          <button
-            className="send-btn"
-            onClick={handleSend}
-            disabled={!canChat || !input.trim() || loading}
-            title="Send (Enter)"
-          >
-            <Send size={18} />
-          </button>
-        </div>
-        <p className="input-hint">
-          <strong>Enter</strong> to send · <strong>Shift+Enter</strong> for new line
-        </p>
+        )}
       </div>
     </div>
   );

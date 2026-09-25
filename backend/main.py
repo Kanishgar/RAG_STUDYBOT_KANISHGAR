@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
-from rag.embedder import retrieve_relevant_chunks
+from rag.embedder import retrieve_relevant_chunks, get_all_questions_by_marks
 from rag.generator import generate_answer, detect_marks_from_query
 
 app = FastAPI(title="Sem 7 RAG Chatbot API", version="2.0.0")
@@ -87,8 +87,8 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=400, detail="Unit must be 1–5.")
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
-    if request.marks and request.marks not in (3, 6, 10):
-        raise HTTPException(status_code=400, detail="Marks must be 3, 6, or 10.")
+    if request.marks and request.marks not in (2, 3, 6, 10):
+        raise HTTPException(status_code=400, detail="Marks must be 2, 6, or 10.")
 
     # Auto-detect marks if not provided by user
     detected_marks = request.marks or detect_marks_from_query(request.question)
@@ -120,6 +120,57 @@ async def chat(request: ChatRequest):
         detected_marks=detected_marks,
         chunks_used=len(chunks),
         top_parts=top_parts,
+    )
+
+
+class QuestionsRequest(BaseModel):
+    subject: str
+    unit: int
+    marks: int   # 3, 6, or 10
+
+
+class QuestionItem(BaseModel):
+    text: str
+    part: str
+    marks: int
+    is_either_or: bool
+
+
+class QuestionsResponse(BaseModel):
+    subject: str
+    unit: int
+    marks: int
+    count: int
+    questions: list[QuestionItem]
+
+
+@app.post("/questions", response_model=QuestionsResponse)
+async def get_questions(request: QuestionsRequest):
+    """
+    Button-driven endpoint: returns ALL questions from Qdrant
+    for the given subject + unit + mark type.
+    No LLM involved — direct Qdrant scroll lookup.
+    """
+    subject = request.subject.lower().strip()
+    if subject not in VALID_SUBJECTS:
+        raise HTTPException(status_code=400, detail=f"Invalid subject '{subject}'.")
+    if not (1 <= request.unit <= 5):
+        raise HTTPException(status_code=400, detail="Unit must be 1–5.")
+    if request.marks not in (2, 6, 10):
+        raise HTTPException(status_code=400, detail="Marks must be 2, 6, or 10.")
+
+    questions = get_all_questions_by_marks(
+        subject=subject,
+        unit=request.unit,
+        marks=request.marks,
+    )
+
+    return QuestionsResponse(
+        subject=subject,
+        unit=request.unit,
+        marks=request.marks,
+        count=len(questions),
+        questions=questions,
     )
 
 

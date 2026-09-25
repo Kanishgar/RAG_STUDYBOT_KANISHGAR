@@ -1,12 +1,34 @@
-// Sidebar.jsx - Subject & Unit selector ONLY (read-only for users)
-// PDFs are pre-ingested by admin via: python ingest.py
+// Sidebar.jsx - Subject & Unit selector with mobile drawer support
 
-import { BookOpen } from "lucide-react";
+import { BookOpen, X } from "lucide-react";
 import { SUBJECTS } from "../subjects";
 
-export default function Sidebar({ selectedSubject, selectedUnit, onSubjectChange, onUnitChange }) {
+export default function Sidebar({
+  selectedSubject,
+  selectedUnit,
+  onSubjectChange,
+  onUnitChange,
+  isOpen = false,
+  onClose,
+}) {
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? "open" : ""}`}>
+      {/* Mobile Drawer Header */}
+      <div className="sidebar-mobile-header">
+        <div className="smh-title">
+          <span>📚 Choose Subject & Unit</span>
+        </div>
+        {onClose && (
+          <button
+            className="sidebar-close-btn"
+            onClick={onClose}
+            aria-label="Close sidebar"
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
+
       {/* Subject Selection */}
       <div className="sidebar-section">
         <h3>📚 Subject</h3>
@@ -44,7 +66,13 @@ export default function Sidebar({ selectedSubject, selectedUnit, onSubjectChange
               <button
                 key={u}
                 className={`unit-pill ${selectedUnit === u ? "active" : ""}`}
-                onClick={() => onUnitChange(selectedUnit === u ? null : u)}
+                onClick={() => {
+                  const nextUnit = selectedUnit === u ? null : u;
+                  onUnitChange(nextUnit);
+                  if (nextUnit && onClose) {
+                    onClose();
+                  }
+                }}
               >
                 Unit {u}
               </button>
@@ -54,14 +82,14 @@ export default function Sidebar({ selectedSubject, selectedUnit, onSubjectChange
       )}
 
       {/* Footer info */}
-      <div className="sidebar-section" style={{ marginTop: "auto" }}>
+      <div className="sidebar-section sidebar-footer">
         <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8 }}>
           <BookOpen size={12} style={{ display: "inline", marginRight: 4 }} />
           <strong>Sem 7 Study Assistant</strong>
           <br />
-          Powered by Gemini + RAG
+          PSG College of Technology
           <br />
-          <span style={{ opacity: 0.7 }}>Trained on your question papers</span>
+          <span style={{ opacity: 0.7 }}>2M, 6M & 10M Past Exam Qns</span>
         </div>
       </div>
     </aside>

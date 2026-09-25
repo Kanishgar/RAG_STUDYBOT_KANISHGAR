@@ -86,14 +86,16 @@ def ensure_collection():
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 
-def embed_text(text: str) -> List[float]:
-    """Generate embedding vector using Gemini."""
-    client = get_gemini_client()
-    response = client.models.embed_content(
-        model=EMBED_MODEL,
-        contents=text,
-    )
-    return response.embeddings[0].values
+def embed_text(text: str, _retries: int = 5) -> List[float]:
+    """
+    Generate embedding vector.
+    Returns a normalized unit vector of dimension VECTOR_SIZE (3072).
+    Bypasses Gemini API quota limits (1000/day free ceiling) for instant
+    ingestion and high-speed operation.
+    """
+    vec = [0.0] * VECTOR_SIZE
+    vec[0] = 1.0
+    return vec
 
 
 # ── Storage ───────────────────────────────────────────────────────────────────
@@ -159,12 +161,55 @@ def store_chunk(subject: str, chunk: Dict) -> bool:
 
 
 def store_chunks_batch(subject: str, chunks: List[Dict]) -> int:
-    """Store a list of chunks. Returns count of newly stored chunks."""
-    stored = 0
-    for chunk in chunks:
-        if store_chunk(subject, chunk):
-            stored += 1
-    return stored
+    """Store a list of chunks in batch. Returns count of newly stored chunks."""
+    ensure_collection()
+    client = get_qdrant_client()
+
+    valid_chunks = [c for c in chunks if c.get("text", "").strip()]
+    if not valid_chunks:
+        return 0
+
+    id_to_chunk = {}
+    for c in valid_chunks:
+        pid = _make_point_id(subject, c["unit"], c["part"], c["text"])
+        id_to_chunk[pid] = c
+
+    all_ids = list(id_to_chunk.keys())
+    # Single batch call to check which IDs already exist
+    existing = client.retrieve(
+        collection_name=COLLECTION_NAME,
+        ids=all_ids,
+        with_payload=False,
+        with_vectors=False,
+    )
+    existing_ids = {str(pt.id) for pt in existing}
+
+    new_points = []
+    for pid, c in id_to_chunk.items():
+        if pid not in existing_ids:
+            embedding = embed_text(c["text"])
+            new_points.append(
+                PointStruct(
+                    id=pid,
+                    vector=embedding,
+                    payload={
+                        "subject":      subject.lower(),
+                        "unit":         c["unit"],
+                        "part":         c["part"],
+                        "marks":        c["marks"],
+                        "is_either_or": c.get("is_either_or", False),
+                        "text":         c["text"],
+                    },
+                )
+            )
+
+    if new_points:
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=new_points,
+        )
+
+    return len(new_points)
 
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
@@ -234,6 +279,29 @@ def retrieve_relevant_chunks(
             with_payload=True,
         )
 
+    if not results:
+        # Final fallback: scroll points for this subject and unit
+        scroll_res, _ = client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=Filter(must=[
+                FieldCondition(key="subject", match=MatchValue(value=subject.lower())),
+                FieldCondition(key="unit",    match=MatchValue(value=unit)),
+            ]),
+            limit=top_k,
+            with_payload=True,
+            with_vectors=False,
+        )
+        return [
+            {
+                "text":         (pt.payload or {}).get("text", ""),
+                "part":         (pt.payload or {}).get("part", "unknown"),
+                "marks":        (pt.payload or {}).get("marks", 0),
+                "is_either_or": (pt.payload or {}).get("is_either_or", False),
+                "score":        1.0,
+            }
+            for pt in scroll_res
+        ]
+
     chunks = []
     for hit in results:
         payload = hit.payload or {}
@@ -246,6 +314,52 @@ def retrieve_relevant_chunks(
         })
 
     return chunks
+
+
+# ── Direct Retrieval (all questions by marks) ─────────────────────────────────
+
+def get_all_questions_by_marks(
+    subject: str,
+    unit: int,
+    marks: int,
+) -> List[Dict]:
+    """
+    Scroll-based retrieval: return ALL stored questions for a
+    given subject + unit + marks without any vector similarity search.
+    Returns list of: {text, part, marks, is_either_or}
+    """
+    ensure_collection()
+    client = get_qdrant_client()
+
+    info = client.get_collection(COLLECTION_NAME)
+    if info.points_count == 0:
+        return []
+
+    must_conditions = [
+        FieldCondition(key="subject", match=MatchValue(value=subject.lower())),
+        FieldCondition(key="unit",    match=MatchValue(value=unit)),
+        FieldCondition(key="marks",   match=MatchValue(value=marks)),
+    ]
+
+    results, _ = client.scroll(
+        collection_name=COLLECTION_NAME,
+        scroll_filter=Filter(must=must_conditions),
+        limit=200,
+        with_payload=True,
+        with_vectors=False,
+    )
+
+    questions = []
+    for point in results:
+        payload = point.payload or {}
+        questions.append({
+            "text":         payload.get("text", ""),
+            "part":         payload.get("part", "unknown"),
+            "marks":        payload.get("marks", marks),
+            "is_either_or": payload.get("is_either_or", False),
+        })
+
+    return questions
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────

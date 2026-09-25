@@ -3,23 +3,23 @@ pdf_parser.py
 PSG College of Technology — Question Paper Parser
 
 Format per unit:
-  1.a          →  3 marks   (unit number ONLY on part a)
-     b.(i)     →  6 marks   (no unit number prefix)
-     b.(ii)    →  6 marks
-     c.(i)     → 10 marks   (either)
-     c.(ii)    → 10 marks   (or)
+  1.a          →  2 marks   (unit number ONLY on part a)
+     a.(ii)    →  2 marks
+     b)        →  6 marks
+     c) i)     → 10 marks   (either)
+     (OR)
+     c) ii)    → 10 marks   (or)
 
   2.a          →  next unit begins
-     b.(i)     →  6 marks
      ...
 
 PSG Tech watermark: diagonal "PSGTECH" / "PSG COLLEGE OF TECHNOLOGY"
-text is scattered throughout — we strip it aggressively.
+text is scattered throughout — we strip it at character level.
 """
 
 import re
 import pdfplumber
-from typing import List, Dict
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
 
@@ -28,17 +28,17 @@ from dataclasses import dataclass
 @dataclass
 class Question:
     unit: int
-    part: str          # 'a', 'b_i', 'b_ii', 'c_i', 'c_ii'
-    marks: int         # 3, 6, or 10
+    part: str          # 'a_i', 'a_ii', 'b', 'c_i', 'c_ii'
+    marks: int         # 2, 6, or 10
     is_either_or: bool
     text: str
     raw_line: str      # for debugging
 
 
 PART_MARKS = {
-    "a_i":  3,   # 1st three-mark question
-    "a_ii": 3,   # 2nd three-mark question
-    "a":    3,   # generic part a fallback
+    "a_i":  2,   # 1st two-mark question
+    "a_ii": 2,   # 2nd two-mark question
+    "a":    2,   # generic part a fallback
     "b":    6,   # the single six-mark question
     "b_i":  6,   # legacy fallback
     "b_ii": 6,   # legacy fallback
@@ -49,94 +49,147 @@ PART_MARKS = {
 EITHER_OR_PARTS = {"c_i", "c_ii"}
 
 
-# ── PSG Tech watermark patterns ───────────────────────────────────────────────
-# The diagonal watermark gets extracted as repeated fragments by pdfplumber
+# ── Character-level watermark filter ─────────────────────────────────────────
+# PSG Tech watermark is a diagonal "PSGTECH" stamp.
+# pdfplumber sees it as characters with a 45° rotation matrix.
 
-WATERMARK_PATTERNS = [
-    re.compile(r"P\s*S\s*G\s*T\s*E\s*C\s*H", re.IGNORECASE),
-    re.compile(r"P\s*S\s*G\s+C\s*O\s*L\s*L\s*E\s*G\s*E", re.IGNORECASE),
-    re.compile(r"P\s*S\s*G\s+C\s*T", re.IGNORECASE),
-    re.compile(r"COIMBATORE", re.IGNORECASE),
-    re.compile(r"PSG\s*TECH", re.IGNORECASE),
-    re.compile(r"psg\s*tech", re.IGNORECASE),
-]
+def not_watermark_char(char) -> bool:
+    """
+    Keep only upright characters (rotation matrix near identity).
+    Watermark chars have matrix=(0.707, 0.707, -0.707, 0.707, ...) — 45° rotation.
+    """
+    m = char.get("matrix", (1, 0, 0, 1, 0, 0))
+    # m[1] and m[2] are sin/cos components of rotation
+    # For upright text: m[1]≈0, m[2]≈0
+    if len(m) >= 4 and (abs(m[1]) > 0.1 or abs(m[2]) > 0.1):
+        return False  # rotated → watermark
+    return True
 
-def is_watermark_line(line: str) -> bool:
-    """Return True if this line is likely a PSG watermark fragment."""
+
+# ── Line-level noise filters ──────────────────────────────────────────────────
+
+# Bloom's taxonomy level tags like (L1), (L2), ... (L6) at end of lines
+RE_BLOOM = re.compile(r"\s*\(L[1-6]\)\s*$")
+
+# Page footer / header patterns
+RE_PAGE_NOISE = re.compile(
+    r"(page\s*no\s*[.:]|www\.|\.com|reg\s*no|"
+    r"roll\s*no|to\s*be\s*filled|"
+    r"no\s*of\s*pages|course\s*code\s*:\s*\d|"
+    r"answer\s*all|time\s*:\s*\d|max.*marks|"
+    r"semester\s*examination|psg\s*college|coimbatore|"
+    r"be\s*[–-]\s*electronic|department\s*of)",
+    re.IGNORECASE,
+)
+
+# Watermark fragment patterns (letter clusters left after char-filter misses)
+RE_WATERMARK_FRAG = re.compile(
+    r"^[PSGTECH\s]{1,15}$",   # lines that are only PSGTECH letters + spaces
+    re.IGNORECASE,
+)
+
+# Numeric-only lines (like "4012" exam code)
+RE_NUMERIC_ONLY = re.compile(r"^\s*\d{3,6}\s*$")
+
+
+def clean_question_text(text: str) -> str:
+    """Remove Bloom's tags, trailing codes, and extra whitespace from question text."""
+    # Remove Bloom's taxonomy tags: (L1), (L4) etc.
+    text = RE_BLOOM.sub("", text)
+    # Remove trailing exam codes like "(L4)" mid-text
+    text = re.sub(r"\s*\(L[1-6]\)", "", text)
+    # Remove "Page No. : N" anywhere in text
+    text = re.sub(r"Page\s*No\s*\.?\s*:\s*\d+", "", text, flags=re.IGNORECASE)
+    # Remove "4012" style exam codes (4-digit standalone numbers)
+    text = re.sub(r"\b\d{4}\b", "", text)
+    # Remove course code references like "19L701"
+    text = re.sub(r"\b\d{2}[A-Z]\d{3}\b", "", text)
+    # Remove "No of Pages : N"
+    text = re.sub(r"No\s*of\s*Pages\s*:\s*\d+", "", text, flags=re.IGNORECASE)
+    # Remove "Course Code : XXXXX"
+    text = re.sub(r"Course\s*Code\s*:\s*[\w]+", "", text, flags=re.IGNORECASE)
+    # Collapse multiple spaces
+    text = re.sub(r"  +", " ", text)
+    return text.strip()
+
+
+def is_noise_line(line: str) -> bool:
+    """Return True if this line should be discarded entirely."""
     stripped = line.strip()
     if not stripped:
-        return False
-    # Check watermark patterns
-    for pat in WATERMARK_PATTERNS:
-        if pat.search(stripped):
-            return True
-    # Very short lines that are just letter clusters (watermark noise)
-    if re.match(r"^[A-Z\s]{1,12}$", stripped) and len(stripped.replace(" ", "")) <= 8:
+        return True
+    if RE_PAGE_NOISE.search(stripped) and len(stripped) < 80:
+        return True
+    if RE_WATERMARK_FRAG.match(stripped):
+        return True
+    if RE_NUMERIC_ONLY.match(stripped):
         return True
     return False
 
 
 # ── PSG Tech question paper regex patterns ────────────────────────────────────
 
-# Matches start of new unit: "1. a" / "1) a" / "1. a) i)" / "1. a (i)"
+# Unit start: "1. a) i)" / "1. a) i)" / "1.a" / "1) a"
+# Captures: group(1)=unit_num, group(2)=rest of text after the a/a(i) marker
 RE_UNIT_A = re.compile(
-    r"^\s*(\d)\s*[.)]\s*[aA]\b(?:\s*[.)]\s*[.(]?\s*[iI]\b)?\.?\s*(.*)?$"
+    r"^\s*(\d)\s*[.)]\s*[aA]\s*[.)]\s*(?:[.(]?\s*[iI]\s*[).]?\s*)?(.*)?$"
 )
 
-# Second 3-mark question in the unit: "a) ii)" / "a. (ii)" / "ii)"
+# a(ii) line: "ii)" / "a) ii)" / "a.(ii)" — but NOT "iii)" or "(OR)"
 RE_A_II = re.compile(
-    r"^\s*(?:[aA]\s*[.)]\s*)?[.(]?\s*[iI]{2}\b\.?\s*(.*)?$"
+    r"^\s*(?:[aA]\s*[.)]\s*)?[.(]?\s*ii\s*[).]?\s*(.*)?$",
+    re.IGNORECASE,
 )
 
-# Single 6-mark question in the unit: "b" / "b)" / "b."
+# b) line: "b)" / "b." — NOT starting with a digit (avoid matching sub-items)
 RE_B = re.compile(
     r"^\s*[bB]\s*[.)]\s*(.*)?$"
 )
 
-# 10-mark Either/Or questions:
-RE_C_I = re.compile(
-    r"^\s*(?:(?:or|either|OR|Either)\s+)?[cC]\s*[.)]\s*[.(]?\s*[iI]\b(?!\s*[iI])\.?\s*(.*)?$"
-)
-RE_C_II = re.compile(
-    r"^\s*(?:(?:or|either|OR|Either)\s+)?[cC]?\s*[.)]?\s*[.(]?\s*(?:[iI]{2}|[oO][rR])\b\.?\s*(.*)?$"
-)
-
-# Standalone either/or separator lines
-RE_EITHER_OR = re.compile(r"^\s*(either|or)\s*$", re.IGNORECASE)
-
-# Header/footer noise to skip
-RE_NOISE = re.compile(
-    r"(page\s*\d+|www\.|\.com|reg\s*no|name\s*:|department|semester|time\s*:|max\s*marks|answer\s*all)",
+# c) or c) i) — Either (10 marks)
+RE_C_START = re.compile(
+    r"^\s*[cC]\s*[.)]\s*(?:[.(]?\s*i\s*[).]?\s*)?(.*)?$",
     re.IGNORECASE,
 )
+
+# c) ii) or standalone ii) — Or (10 marks)
+RE_C_OR_START = re.compile(
+    r"^\s*(?:[cC]\s*[.)]\s*)?[.(]?\s*ii\s*[).]?\s*(.*)?$",
+    re.IGNORECASE,
+)
+
+# Standalone (OR) / OR separator
+RE_OR = re.compile(r"^\s*\(?OR\)?\s*$", re.IGNORECASE)
+
+# Standalone (EITHER) separator
+RE_EITHER = re.compile(r"^\s*\(?EITHER\)?\s*$", re.IGNORECASE)
+
+# CO / BTL annotation lines to skip
+RE_CO_LINE = re.compile(r"^\s*CO\s*[O0]?\s*:", re.IGNORECASE)
+RE_BTL_LINE = re.compile(r"BTL\s*:", re.IGNORECASE)
 
 
 # ── Extraction ────────────────────────────────────────────────────────────────
 
-def not_watermark_char(char):
-    """Filter out 45-degree rotated diagonal PSG Tech watermark characters."""
-    m = char.get("matrix", (1, 0, 0, 1))
-    if len(m) >= 4 and (abs(m[1]) > 0.01 or abs(m[2]) > 0.01):
-        return False
-    if char.get("size", 0) > 18:
-        return False
-    return True
-
-
 def extract_text_from_pdf(file_path: str) -> str:
-    """Extract text from PDF with true character-level watermark removal."""
+    """
+    Extract text from a PSG Tech question paper PDF with:
+    1. Character-level watermark removal (rotation matrix filter)
+    2. Line-level noise removal (headers, footers, watermark fragments)
+    """
     lines_out = []
 
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
+            # Step 1: filter out rotated (watermark) characters
             filtered_page = page.filter(not_watermark_char)
             page_text = filtered_page.extract_text()
             if not page_text:
                 continue
+
             for line in page_text.split("\n"):
-                if is_watermark_line(line):
-                    continue
-                if RE_NOISE.search(line) and len(line.strip()) < 60:
+                # Step 2: skip noise lines
+                if is_noise_line(line):
                     continue
                 lines_out.append(line)
 
@@ -145,52 +198,54 @@ def extract_text_from_pdf(file_path: str) -> str:
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
 
-def _try_match_continuation(line: str):
+def _strip_part_prefix(line: str, part: str) -> str:
     """
-    Try to match a continuation sub-part line (a_ii, b, c_i, c_ii).
-    Returns (part_key, captured_text) or None.
-    Order matters: check ii before i.
+    Remove the leading part marker from a line so we get clean question text.
+    e.g. "i) Draw the VI..." → "Draw the VI..."
+         "ii) Examine..." → "Examine..."
+         "b) Write..." → "Write..."
     """
-    for pattern, part_key in [
-        (RE_C_II, "c_ii"),
-        (RE_C_I,  "c_i"),
-        (RE_B,    "b"),
-        (RE_A_II, "a_ii"),
-    ]:
-        m = pattern.match(line)
-        if m:
-            captured = m.group(1).strip() if m.lastindex and m.group(1) else ""
-            return part_key, captured
-    return None
+    # Remove leading: i) / ii) / a) i) / b) / c) i) / c) ii) etc.
+    line = re.sub(
+        r"^\s*(?:\d\s*[.)]\s*)?(?:[a-cA-C]\s*[.)]\s*)?(?:[.(]?\s*i{1,2}\s*[).]?\s*)?",
+        "",
+        line,
+    ).strip()
+    return line
 
 
 def parse_questions_from_text(text: str) -> List[Question]:
     """
-    Parse PSG Tech question paper text into Question objects.
+    State machine parser for PSG Tech question paper text.
 
-    State machine:
-      - When we see "N.a" / "N.a(i)" → new unit N begins, start collecting part 'a_i' (3 marks)
-      - When we see "a.(ii)" → collecting part 'a_ii' (3 marks)
-      - When we see "b" → collecting part 'b' (6 marks)
-      - When we see "c.(i)", "c.(ii)" → collecting parts 'c_i', 'c_ii' (10 marks either/or)
+    States:
+      - Waiting for unit start (N.a ...)
+      - Inside a_i   → collect until a_ii / b / c_i marker
+      - Inside a_ii  → collect until b marker
+      - Inside b     → collect until c_i marker
+      - Inside c_i   → collect until (OR) / c_ii marker
+      - Inside c_ii  → collect until next unit start
     """
     lines = text.split("\n")
     questions: List[Question] = []
 
-    current_unit = None
-    current_part = None
-    current_lines: List[str] = []
+    current_unit: Optional[int] = None
+    current_part: Optional[str] = None
+    current_lines: List[str]    = []
+    seen_or: bool               = False   # tracks if we just saw (OR)
 
     def flush():
+        nonlocal current_unit, current_part, current_lines
         if current_unit is not None and current_part and current_lines:
-            q_text = " ".join(l for l in current_lines if l.strip())
-            if q_text.strip():
+            raw = " ".join(l for l in current_lines if l.strip())
+            q_text = clean_question_text(raw)
+            if q_text and len(q_text) > 5:  # skip trivial fragments
                 questions.append(Question(
                     unit=current_unit,
                     part=current_part,
-                    marks=PART_MARKS.get(current_part, 0),
+                    marks=PART_MARKS.get(current_part, 10 if "c" in current_part else 0),
                     is_either_or=(current_part in EITHER_OR_PARTS),
-                    text=q_text.strip(),
+                    text=q_text,
                     raw_line=current_lines[0] if current_lines else "",
                 ))
 
@@ -199,33 +254,82 @@ def parse_questions_from_text(text: str) -> List[Question]:
         if not line:
             continue
 
-        # Skip standalone either/or markers
-        if RE_EITHER_OR.match(line):
+        # Skip annotation/CO lines
+        if RE_CO_LINE.match(line) or RE_BTL_LINE.search(line):
             continue
 
-        # Check if this is "N.a" — start of a new unit
-        m_unit_a = RE_UNIT_A.match(line)
-        if m_unit_a:
+        # ── (OR) separator ────────────────────────────────────────────────────
+        if RE_OR.match(line):
+            seen_or = True
+            continue
+
+        # ── (EITHER) separator ────────────────────────────────────────────────
+        if RE_EITHER.match(line):
+            continue
+
+        # ── New unit start: "N. a) i) ..." ───────────────────────────────────
+        m_unit = RE_UNIT_A.match(line)
+        if m_unit:
             flush()
-            current_unit = int(m_unit_a.group(1))
-            current_part = "a_i"
-            first_text   = m_unit_a.group(2).strip() if m_unit_a.group(2) else ""
-            current_lines = [first_text] if first_text else []
+            current_unit  = int(m_unit.group(1))
+            current_part  = "a_i"
+            seen_or       = False
+            rest          = (m_unit.group(2) or "").strip()
+            rest          = clean_question_text(rest)
+            current_lines = [rest] if rest else []
             continue
 
-        # Check if this is a continuation part (b.(i), b.(ii), c.(i), c.(ii))
-        if current_unit is not None:
-            cont = _try_match_continuation(line)
-            if cont:
-                flush()
-                current_part  = cont[0]
-                first_text    = cont[1]
-                current_lines = [first_text] if first_text else []
-                continue
+        if current_unit is None:
+            continue  # haven't started parsing yet
 
-        # Otherwise it's a continuation of the current question text
-        if current_unit is not None and current_part:
-            current_lines.append(line)
+        # ── Part markers (order matters — check most specific first) ──────────
+
+        # If seen_or was True, the next line begins c_ii (Or)
+        if seen_or and current_part in ("c_i", "c", "b"):
+            flush()
+            current_part  = "c_ii"
+            seen_or       = False
+            m_c2 = RE_C_OR_START.match(line)
+            rest = (m_c2.group(1) or "").strip() if m_c2 else line
+            rest = clean_question_text(rest)
+            current_lines = [rest] if rest else []
+            continue
+
+        # c) or c) i) — Part C (10 marks)
+        m_c = RE_C_START.match(line)
+        if m_c and current_part in ("b", "a_ii", "a_i"):
+            flush()
+            current_part  = "c_i"
+            seen_or       = False
+            rest          = clean_question_text((m_c.group(1) or "").strip())
+            current_lines = [rest] if rest else []
+            continue
+
+        # b) — 6-mark question
+        m_b = RE_B.match(line)
+        if m_b and current_part in ("a_i", "a_ii"):
+            flush()
+            current_part  = "b"
+            seen_or       = False
+            rest          = clean_question_text((m_b.group(1) or "").strip())
+            current_lines = [rest] if rest else []
+            continue
+
+        # a) ii) — 2nd two-mark question
+        m_a2 = RE_A_II.match(line)
+        if m_a2 and current_part == "a_i":
+            flush()
+            current_part  = "a_ii"
+            seen_or       = False
+            rest          = (m_a2.group(1) or "").strip()
+            rest          = clean_question_text(rest)
+            current_lines = [rest] if rest else []
+            continue
+
+        # ── Continuation line ─────────────────────────────────────────────────
+        cleaned = clean_question_text(line)
+        if cleaned:
+            current_lines.append(cleaned)
 
     flush()
     return questions
@@ -234,7 +338,7 @@ def parse_questions_from_text(text: str) -> List[Question]:
 # ── Conversion to chunks ──────────────────────────────────────────────────────
 
 def questions_to_chunks(questions: List[Question]) -> List[Dict]:
-    """Convert Question objects to chunk dicts for ChromaDB ingestion."""
+    """Convert Question objects to chunk dicts for Qdrant ingestion."""
     chunks = []
     for q in questions:
         if not q.text.strip():
