@@ -31,11 +31,7 @@ export default function App() {
         </div>
 
         <div className="topbar-actions">
-          <div className="dev-watermark-pill">
-            <span className="dev-pulse-dot"></span>
-            <span className="dev-pill-label">Developed by</span>
-            <span className="dev-pill-name">Kanishgar</span>
-          </div>
+          {/* Topbar right side kept clean per request */}
         </div>
       </header>
 

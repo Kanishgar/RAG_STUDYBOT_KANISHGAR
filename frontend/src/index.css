@@ -1227,22 +1227,27 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* Floating Watermark */
+.messages-container {
+  padding-bottom: 72px;
+}
+
+/* Floating Watermark — Persistent Bottom Right */
 .floating-dev-badge {
   position: fixed;
-  bottom: 14px;
-  right: 18px;
+  bottom: 16px;
+  right: 20px;
   z-index: 30;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(99, 102, 241, 0.35);
+  gap: 8px;
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(99, 102, 241, 0.35);
   border-radius: 30px;
-  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.16);
-  font-size: 11.5px;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
   pointer-events: auto;
@@ -1252,29 +1257,29 @@ body {
 }
 
 .floating-dev-badge:hover {
-  transform: translateY(-2px) scale(1.02);
+  transform: translateY(-2px) scale(1.03);
   border-color: #6366F1;
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.28);
+  box-shadow: 0 8px 26px rgba(99, 102, 241, 0.3);
 }
 
 .dev-badge-pulse {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #6366F1;
-  box-shadow: 0 0 8px #6366F1;
+  box-shadow: 0 0 10px #6366F1;
   animation: neonGlow 1.8s infinite alternate;
   flex-shrink: 0;
 }
 
 @keyframes neonGlow {
   from {
-    opacity: 0.6;
+    opacity: 0.65;
     box-shadow: 0 0 4px #6366F1;
   }
   to {
     opacity: 1;
-    box-shadow: 0 0 12px #EC4899;
+    box-shadow: 0 0 14px #EC4899;
   }
 }
 
@@ -1330,10 +1335,15 @@ body {
 }
 
 @media (max-width: 768px) {
+  .messages-container {
+    padding-bottom: 64px;
+  }
+
   .floating-dev-badge {
-    bottom: 10px;
-    right: 10px;
-    padding: 4px 10px;
-    font-size: 10.5px;
+    bottom: 12px;
+    right: 12px;
+    padding: 5px 12px;
+    font-size: 11px;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.16);
   }
 }
