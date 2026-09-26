@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rag-studybot-kanishgar.vercel.app/sitemap.xml
